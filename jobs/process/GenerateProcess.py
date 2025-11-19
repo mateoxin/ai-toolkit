@@ -28,6 +28,7 @@ class GenerateConfig:
         self.size_list: Union[List[int], None] = kwargs.get('size_list', None)
         self.neg = kwargs.get('neg', '')
         self.seed = kwargs.get('seed', -1)
+        self.walk_seed = kwargs.get('walk_seed', False)
         self.guidance_scale = kwargs.get('guidance_scale', 7)
         self.sample_steps = kwargs.get('sample_steps', 20)
         self.prompt_2 = kwargs.get('prompt_2', None)
@@ -136,6 +137,8 @@ class GenerateProcess(BaseProcess):
             print(f"Generating {len(self.generate_config.prompts)} images")
             # build prompt image configs
             prompt_image_configs = []
+            start_seed = self.generate_config.seed
+            walk_seed_counter = 0
             for _ in range(self.generate_config.num_repeats):
                 for prompt in self.generate_config.prompts:
                     # remove --
@@ -148,6 +151,11 @@ class GenerateProcess(BaseProcess):
                         # randomly select a size
                         width, height = random.choice(self.generate_config.size_list)
 
+                    seed = self.generate_config.seed
+                    if self.generate_config.walk_seed and start_seed >= 0:
+                        seed = start_seed + walk_seed_counter
+                        walk_seed_counter += 1
+
                     prompt_image_configs.append(GenerateImageConfig(
                         prompt=prompt,
                         prompt_2=self.generate_config.prompt_2,
@@ -157,7 +165,7 @@ class GenerateProcess(BaseProcess):
                         guidance_scale=self.generate_config.guidance_scale,
                         negative_prompt=self.generate_config.neg,
                         negative_prompt_2=self.generate_config.neg_2,
-                        seed=self.generate_config.seed,
+                        seed=seed,
                         guidance_rescale=self.generate_config.guidance_rescale,
                         output_ext=self.generate_config.ext,
                         output_folder=self.output_folder,
