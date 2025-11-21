@@ -1,0 +1,61 @@
+---
+# Example: Generate images with multiple LoRAs
+# This shows how to use multiple LoRAs with different weights
+
+job: generate
+config:
+  name: generate_multiple_loras
+  process:
+    - type: to_folder
+      output_folder: output/generated_images_multiple_loras
+      device: cuda:0
+
+      generate:
+        sampler: flowmatch
+        width: 1024
+        height: 1280
+        guidance_scale: 3
+        sample_steps: 30
+        seed: 99
+        walk_seed: false
+        num_repeats: 1
+        ext: png
+        
+        prompts:
+          - "Handsome, young Man on a tropical beach; midday sun; turquoise water and towering limestone cliffs behind; standing at shoreline; sunglasses, pink swim shorts, open linen shirt; subtle sun highlights; raw photo"
+          - "Portrait of a young man in urban setting, modern street style, natural lighting, photorealistic"
+          - "Professional headshot of a businessman, office background, confident expression, high quality photo"
+        
+        negative_prompt: blurry, bad anatomy, watermark, oversaturated, distorted, artificial, low quality
+
+      model:
+        name_or_path: black-forest-labs/FLUX.1-dev
+        is_flux: true
+        quantize: true
+        dtype: float16
+        
+        # Multiple LoRAs with individual weights
+        lora_paths:
+          # First LoRA - Main character/subject (higher weight)
+          - path: /path/to/your/character_lora.safetensors
+            weight: 1.0
+          
+          # Second LoRA - Style or artistic effect (medium weight)
+          - path: /path/to/your/style_lora.safetensors
+            weight: 0.7
+          
+          # Third LoRA - Quality enhancement or subtle effect (optional, lower weight)
+          # - path: /path/to/your/quality_lora.safetensors
+          #   weight: 0.5
+        
+        # Note: If you omit 'weight', it defaults to 1.0
+        # You can also use S3 paths:
+        # - path: s3://bucket-name/path/to/lora.safetensors
+        #   weight: 0.8
+
+# Weight Recommendations:
+# - Main subject/character LoRA: 0.8 - 1.0
+# - Artistic style LoRA: 0.5 - 0.7
+# - Quality enhancement LoRA: 0.3 - 0.5
+# - Subtle effect LoRA: 0.2 - 0.4
+

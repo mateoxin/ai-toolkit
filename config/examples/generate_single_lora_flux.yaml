@@ -1,0 +1,39 @@
+---
+# Example: Generate images with a single LoRA (backward compatible)
+# This shows how to use a single LoRA using the traditional lora_path parameter
+
+job: generate
+config:
+  name: generate_single_lora
+  process:
+    - type: to_folder
+      output_folder: output/generated_images_single_lora
+      device: cuda:0
+
+      generate:
+        sampler: flowmatch
+        width: 1024
+        height: 1280
+        guidance_scale: 3
+        sample_steps: 30
+        seed: 99
+        walk_seed: false
+        num_repeats: 1
+        ext: png
+        
+        prompts:
+          - "Handsome, young Man on a tropical beach; midday sun; turquoise water and towering limestone cliffs behind; standing at shoreline; sunglasses, pink swim shorts, open linen shirt; subtle sun highlights; raw photo"
+          - "Portrait of a young man in urban setting, modern street style, natural lighting, photorealistic"
+        
+        negative_prompt: blurry, bad anatomy, watermark, oversaturated, distorted, artificial, low quality
+
+      model:
+        name_or_path: black-forest-labs/FLUX.1-dev
+        is_flux: true
+        quantize: true
+        dtype: float16
+        
+        # Traditional single LoRA approach (backward compatible)
+        lora_path: /path/to/your/lora.safetensors
+        lora_weight: 1.0  # Optional, defaults to 1.0
+

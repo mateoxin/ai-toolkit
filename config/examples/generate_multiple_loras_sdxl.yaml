@@ -1,0 +1,52 @@
+---
+# Example: Generate images with multiple LoRAs for SDXL models
+# This shows how to use multiple LoRAs with different weights on SDXL
+
+job: generate
+config:
+  name: generate_multiple_loras_sdxl
+  process:
+    - type: to_folder
+      output_folder: output/generated_images_multiple_loras_sdxl
+      device: cuda:0
+
+      generate:
+        sampler: ddim
+        width: 1024
+        height: 1024
+        guidance_scale: 7
+        sample_steps: 25
+        seed: 42
+        walk_seed: false
+        num_repeats: 1
+        ext: png
+        
+        prompts:
+          - "A majestic dragon flying over a medieval castle, highly detailed, fantasy art"
+          - "A futuristic robot bartender serving drinks in a neon-lit bar, cinematic, sci-fi"
+          - "Portrait of a wizard with a long beard, magical aura, fantasy illustration"
+        
+        negative_prompt: blurry, low quality, distorted, watermark, bad anatomy
+
+      model:
+        name_or_path: stabilityai/stable-diffusion-xl-base-1.0
+        is_xl: true
+        dtype: float16
+        
+        # Multiple LoRAs for SDXL
+        lora_paths:
+          # Character LoRA
+          - path: /path/to/your/sdxl_character_lora.safetensors
+            weight: 0.9
+          
+          # Style LoRA
+          - path: /path/to/your/sdxl_style_lora.safetensors
+            weight: 0.6
+          
+          # Quality LoRA (optional)
+          # - path: /path/to/your/sdxl_quality_lora.safetensors
+          #   weight: 0.4
+
+# Note: SDXL LoRAs are loaded and fused similarly to FLUX LoRAs
+# The main difference is the model architecture, but the configuration is identical
+
