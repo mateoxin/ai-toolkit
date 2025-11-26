@@ -345,13 +345,20 @@ class StableDiffusion:
                     lora_state_dict = load_file(lora_path)
                     cleaned_state_dict = {}
                     
-                    # 2. Clean keys (remove ._data suffix)
+                    # 2. Clean and Filter keys
                     for key, value in lora_state_dict.items():
+                        # Handle ._data suffix
                         if key.endswith('._data'):
-                            new_key = key[:-6]  # Remove '._data' suffix
-                            cleaned_state_dict[new_key] = value
-                        else:
-                            cleaned_state_dict[key] = value
+                            key = key[:-6]
+                            
+                        # For Flux, filter strictly to transformer blocks to avoid errors with auxiliary keys
+                        # (Matches behavior of ai-toolkit's low_vram loading which proved stable)
+                        if self.is_flux:
+                            if "transformer." not in key:
+                                # Skip non-transformer keys (like time_text_embed) that cause errors
+                                continue
+                                
+                        cleaned_state_dict[key] = value
                     
                     # 3. Inject directly into pipeline (no temp file needed!)
                     self.pipeline.load_lora_weights(cleaned_state_dict, adapter_name=adapter_name)
