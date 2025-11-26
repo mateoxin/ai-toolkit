@@ -324,16 +324,34 @@ class StableDiffusion:
     def load_lora_after_injection(self):
         """
         Load LoRA weights into the injected pipeline.
-        Uses the EXACT logic from ai-toolkit's low_vram mode (proven to work).
+        EXACT COPY of ai-toolkit's low_vram LoRA loading logic (lines 842-882).
         """
         if not self.is_loaded:
             raise RuntimeError("Pipeline must be injected before loading LoRA")
         
-        # Handle multiple LoRAs (backward compatible with single lora_path)
         if self.model_config.lora_paths is not None:
             print(f"🎨 Loading {len(self.model_config.lora_paths)} LoRA(s) into injected pipeline...")
             
             from safetensors.torch import load_file
+            import torch
+            
+            # Get dtype
+            dtype = get_torch_dtype(self.dtype)
+            
+            # Extract transformer from pipeline
+            transformer = self.pipeline.transformer
+            
+            # Create temporary minimal pipeline (EXACT COPY of original, line 825-833)
+            from diffusers import FluxPipeline
+            temp_pipe = FluxPipeline(
+                scheduler=None,
+                text_encoder=None,
+                tokenizer=None,
+                text_encoder_2=None,
+                tokenizer_2=None,
+                vae=None,
+                transformer=transformer,
+            )
             
             for idx, lora_config in enumerate(self.model_config.lora_paths):
                 lora_path = lora_config['path']
@@ -343,62 +361,74 @@ class StableDiffusion:
                 print(f"  📦 LoRA {idx+1}/{len(self.model_config.lora_paths)}: {lora_path} (weight: {lora_weight})")
                 
                 try:
-                    # EXACT COPY of ai-toolkit's low_vram LoRA loading logic (lines 831-866)
+                    # EXACT COPY of low_vram logic (lines 847-882)
+                    print(f"  🔍 Loading LoRA state dict from disk...")
                     lora_state_dict = load_file(lora_path)
+                    print(f"  ✅ Loaded {len(lora_state_dict)} keys from LoRA file")
                     
-                    # DIAGNOSTIC: Print ALL keys to see the structure
-                    print(f"  🔍 LoRA has {len(lora_state_dict)} keys. Sample (first 10):")
-                    for i, key in enumerate(list(lora_state_dict.keys())[:10]):
-                        print(f"    {i+1}. {key}")
+                    # DIAGNOSTIC: Show key structure
+                    print(f"  🔍 First 5 keys in LoRA:")
+                    for i, key in enumerate(list(lora_state_dict.keys())[:5]):
+                        print(f"      {i+1}. {key}")
                     
-                    # Filter ONLY transformer blocks (ignore problematic keys like time_text_embed)
+                    # Split into single and double blocks (EXACT PATTERNS from line 849-851)
                     single_transformer_lora = {}
-                    single_block_key = "single_transformer_blocks."  # EXACT PATTERN FROM ORIGINAL
+                    single_block_key = "transformer.single_transformer_blocks."
                     double_transformer_lora = {}
-                    double_block_key = "transformer_blocks."  # NO "transformer." PREFIX!
+                    double_block_key = "transformer.transformer_blocks."
                     
-                    ignored_keys = []
+                    print(f"  🔍 Filtering keys...")
                     for key, value in lora_state_dict.items():
                         if single_block_key in key:
                             single_transformer_lora[key] = value
                         elif double_block_key in key:
                             double_transformer_lora[key] = value
                         else:
-                            # Everything else (like time_text_embed) is IGNORED
-                            ignored_keys.append(key)
+                            # Original raises error (line 858), but we'll be lenient
+                            print(f"  ⚠️ Ignoring unknown key: {key}")
                     
-                    if ignored_keys:
-                        print(f"  ⚠️ Ignoring {len(ignored_keys)} non-transformer keys (e.g. {ignored_keys[0]})")
+                    print(f"  📊 Filtered: {len(double_transformer_lora)} double block keys, {len(single_transformer_lora)} single block keys")
                     
-                    # Load single blocks
-                    if single_transformer_lora:
-                        self.pipeline.load_lora_weights(single_transformer_lora, adapter_name=f"{adapter_name}_single")
-                        self.pipeline.set_adapters([f"{adapter_name}_single"], adapter_weights=[lora_weight])
-                        self.pipeline.fuse_lora()
-                        self.pipeline.unload_lora_weights()
-                        print(f"  ✅ Loaded single blocks ({len(single_transformer_lora)} keys)")
+                    # EXACT COPY: Load double blocks (lines 860-870)
+                    print(f"  🔄 Processing double blocks...")
+                    transformer.transformer_blocks = transformer.transformer_blocks.to(
+                        self.device_torch, dtype=dtype  # quantize_device in original
+                    )
+                    print(f"  🔧 Loading double blocks into temp pipeline...")
+                    temp_pipe.load_lora_weights(double_transformer_lora, adapter_name=f"{adapter_name}_double")
+                    temp_pipe.set_adapters([f"{adapter_name}_double"], adapter_weights=[lora_weight])
+                    print(f"  🔗 Fusing double blocks...")
+                    temp_pipe.fuse_lora()
+                    temp_pipe.unload_lora_weights()
+                    print(f"  ✅ Double blocks fused and unloaded")
+                    # Note: Original moves to CPU here, but we keep on GPU since we're not in low_vram mode
                     
-                    # Load double blocks
-                    if double_transformer_lora:
-                        self.pipeline.load_lora_weights(double_transformer_lora, adapter_name=f"{adapter_name}_double")
-                        self.pipeline.set_adapters([f"{adapter_name}_double"], adapter_weights=[lora_weight])
-                        self.pipeline.fuse_lora()
-                        self.pipeline.unload_lora_weights()
-                        print(f"  ✅ Loaded double blocks ({len(double_transformer_lora)} keys)")
+                    # EXACT COPY: Load single blocks (lines 872-879)
+                    print(f"  🔄 Processing single blocks...")
+                    transformer.single_transformer_blocks = transformer.single_transformer_blocks.to(
+                        self.device_torch, dtype=dtype
+                    )
+                    print(f"  🔧 Loading single blocks into temp pipeline...")
+                    temp_pipe.load_lora_weights(single_transformer_lora, adapter_name=f"{adapter_name}_single")
+                    temp_pipe.set_adapters([f"{adapter_name}_single"], adapter_weights=[lora_weight])
+                    print(f"  🔗 Fusing single blocks...")
+                    temp_pipe.fuse_lora()
+                    temp_pipe.unload_lora_weights()
+                    print(f"  ✅ Single blocks fused and unloaded")
                     
                     # Cleanup
                     del lora_state_dict
                     del single_transformer_lora
                     del double_transformer_lora
+                    torch.cuda.empty_cache()
                     
                     print(f"  ✅ LoRA {adapter_name} loaded successfully")
                     
                 except Exception as e:
-                    print(f"  ⚠️ Failed to load LoRA {adapter_name}: {e}")
+                    print(f"  ❌ Failed to load LoRA {adapter_name}: {e}")
                     import traceback
                     print(traceback.format_exc())
-                    print(f"  ⚠️ Continuing without this LoRA...")
-                    continue
+                    raise  # Re-raise to see full error
             
             print(f"✅ Successfully loaded {len(self.model_config.lora_paths)} LoRA(s)")
         else:
