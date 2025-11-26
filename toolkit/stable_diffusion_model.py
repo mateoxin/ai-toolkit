@@ -320,6 +320,34 @@ class StableDiffusion:
         
         self.is_loaded = True
         print("✅ Pipeline injected successfully. load_model() will be skipped.")
+    
+    def load_lora_after_injection(self):
+        """Load LoRA weights into the injected pipeline"""
+        if not self.is_loaded:
+            raise RuntimeError("Pipeline must be injected before loading LoRA")
+        
+        # Handle multiple LoRAs (backward compatible with single lora_path)
+        if self.model_config.lora_paths is not None:
+            print(f"🎨 Loading {len(self.model_config.lora_paths)} LoRA(s) into injected pipeline...")
+            
+            for idx, lora_config in enumerate(self.model_config.lora_paths):
+                lora_path = lora_config['path']
+                lora_weight = lora_config.get('weight', 1.0)
+                adapter_name = f"lora{idx+1}"
+                
+                print(f"  📦 LoRA {idx+1}/{len(self.model_config.lora_paths)}: {lora_path} (weight: {lora_weight})")
+                
+                # Load LoRA weights using diffusers API
+                self.pipeline.load_lora_weights(lora_path, adapter_name=adapter_name)
+                self.pipeline.set_adapters([adapter_name], adapter_weights=[lora_weight])
+            
+            # Fuse LoRAs into the model weights
+            self.pipeline.fuse_lora()
+            self.pipeline.unload_lora_weights()
+            
+            print(f"✅ Successfully fused {len(self.model_config.lora_paths)} LoRA(s)")
+        else:
+            print("⚠️ No LoRA configured to load")
 
     def load_model(self):
         if self.is_loaded:
