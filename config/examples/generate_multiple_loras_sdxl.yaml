@@ -50,3 +50,4 @@ config:
 # Note: SDXL LoRAs are loaded and fused similarly to FLUX LoRAs
 # The main difference is the model architecture, but the configuration is identical
 
+

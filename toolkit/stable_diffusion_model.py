@@ -276,6 +276,28 @@ class StableDiffusion:
         return divisibility * 2 # todo remove this
         
 
+    def inject_pipeline(self, pipeline):
+        """Inject a pre-loaded pipeline to skip loading from disk"""
+        print(f"💉 Injecting pre-loaded pipeline: {type(pipeline).__name__}")
+        self.pipeline = pipeline
+        
+        # Map pipeline components to self
+        if hasattr(pipeline, 'vae'): self.vae = pipeline.vae
+        if hasattr(pipeline, 'unet'): self.unet = pipeline.unet
+        if hasattr(pipeline, 'transformer'): self.transformer = pipeline.transformer
+        if hasattr(pipeline, 'text_encoder'): self.text_encoder = pipeline.text_encoder
+        if hasattr(pipeline, 'text_encoder_2'): self.text_encoder_2 = pipeline.text_encoder_2
+        if hasattr(pipeline, 'tokenizer'): self.tokenizer = pipeline.tokenizer
+        if hasattr(pipeline, 'tokenizer_2'): self.tokenizer_2 = pipeline.tokenizer_2
+        
+        # Specific for Flux
+        if self.is_flux and hasattr(pipeline, 'transformer'):
+             # Flux uses transformer instead of unet
+             self.unet = pipeline.transformer
+        
+        self.is_loaded = True
+        print("✅ Pipeline injected successfully. load_model() will be skipped.")
+
     def load_model(self):
         if self.is_loaded:
             return

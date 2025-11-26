@@ -37,3 +37,4 @@ config:
         lora_path: /path/to/your/lora.safetensors
         lora_weight: 1.0  # Optional, defaults to 1.0
 
+
