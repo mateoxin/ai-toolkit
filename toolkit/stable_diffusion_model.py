@@ -285,10 +285,33 @@ class StableDiffusion:
         if hasattr(pipeline, 'vae'): self.vae = pipeline.vae
         if hasattr(pipeline, 'unet'): self.unet = pipeline.unet
         if hasattr(pipeline, 'transformer'): self.transformer = pipeline.transformer
-        if hasattr(pipeline, 'text_encoder'): self.text_encoder = pipeline.text_encoder
-        if hasattr(pipeline, 'text_encoder_2'): self.text_encoder_2 = pipeline.text_encoder_2
-        if hasattr(pipeline, 'tokenizer'): self.tokenizer = pipeline.tokenizer
-        if hasattr(pipeline, 'tokenizer_2'): self.tokenizer_2 = pipeline.tokenizer_2
+
+        # Some architectures (Flux, SDXL, SD3) expect self.text_encoder/tokenizer to be lists.
+        text_encoders = []
+        tokenizers = []
+
+        if hasattr(pipeline, 'text_encoder'):
+            text_encoders.append(pipeline.text_encoder)
+        if hasattr(pipeline, 'text_encoder_2'):
+            self.text_encoder_2 = pipeline.text_encoder_2
+            text_encoders.append(pipeline.text_encoder_2)
+        if hasattr(pipeline, 'text_encoder_3'):
+            self.text_encoder_3 = pipeline.text_encoder_3
+            text_encoders.append(pipeline.text_encoder_3)
+
+        if hasattr(pipeline, 'tokenizer'):
+            tokenizers.append(pipeline.tokenizer)
+        if hasattr(pipeline, 'tokenizer_2'):
+            self.tokenizer_2 = pipeline.tokenizer_2
+            tokenizers.append(pipeline.tokenizer_2)
+        if hasattr(pipeline, 'tokenizer_3'):
+            self.tokenizer_3 = pipeline.tokenizer_3
+            tokenizers.append(pipeline.tokenizer_3)
+
+        if text_encoders:
+            self.text_encoder = text_encoders if len(text_encoders) > 1 else text_encoders[0]
+        if tokenizers:
+            self.tokenizer = tokenizers if len(tokenizers) > 1 else tokenizers[0]
         
         # Specific for Flux
         if self.is_flux and hasattr(pipeline, 'transformer'):
