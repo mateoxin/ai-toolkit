@@ -338,40 +338,30 @@ class StableDiffusion:
                 print(f"  📦 LoRA {idx+1}/{len(self.model_config.lora_paths)}: {lora_path} (weight: {lora_weight})")
                 
                 try:
-                    # Method 1: Try diffusers native API (works for most LoRAs)
+                    # Method: Load safetensors, clean keys, and inject directly
                     from safetensors.torch import load_file
                     
-                    # Load and clean LoRA state dict (remove problematic keys)
+                    # 1. Load state dict to memory (fast)
                     lora_state_dict = load_file(lora_path)
                     cleaned_state_dict = {}
                     
+                    # 2. Clean keys (remove ._data suffix)
                     for key, value in lora_state_dict.items():
-                        # Skip keys ending with ._data (legacy format)
                         if key.endswith('._data'):
                             new_key = key[:-6]  # Remove '._data' suffix
                             cleaned_state_dict[new_key] = value
-                            print(f"    🔧 Cleaned key: {key} -> {new_key}")
                         else:
                             cleaned_state_dict[key] = value
                     
-                    # Save cleaned version temporarily
-                    import tempfile
-                    import os
-                    from safetensors.torch import save_file
-                    
-                    with tempfile.NamedTemporaryFile(suffix='.safetensors', delete=False) as tmp:
-                        temp_path = tmp.name
-                    
-                    save_file(cleaned_state_dict, temp_path)
-                    
-                    # Load cleaned LoRA
-                    self.pipeline.load_lora_weights(temp_path, adapter_name=adapter_name)
+                    # 3. Inject directly into pipeline (no temp file needed!)
+                    self.pipeline.load_lora_weights(cleaned_state_dict, adapter_name=adapter_name)
                     self.pipeline.set_adapters([adapter_name], adapter_weights=[lora_weight])
                     
-                    # Clean up temp file
-                    os.unlink(temp_path)
+                    # Cleanup memory
+                    del lora_state_dict
+                    del cleaned_state_dict
                     
-                    print(f"  ✅ LoRA {adapter_name} loaded successfully (cleaned {len(lora_state_dict) - len(cleaned_state_dict)} keys)")
+                    print(f"  ✅ LoRA {adapter_name} loaded successfully")
                     
                 except Exception as e:
                     print(f"  ⚠️ Failed to load LoRA {adapter_name}: {e}")
