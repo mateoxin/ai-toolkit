@@ -346,18 +346,29 @@ class StableDiffusion:
                     # EXACT COPY of ai-toolkit's low_vram LoRA loading logic (lines 831-866)
                     lora_state_dict = load_file(lora_path)
                     
+                    # DIAGNOSTIC: Print ALL keys to see the structure
+                    print(f"  🔍 LoRA has {len(lora_state_dict)} keys. Sample (first 10):")
+                    for i, key in enumerate(list(lora_state_dict.keys())[:10]):
+                        print(f"    {i+1}. {key}")
+                    
                     # Filter ONLY transformer blocks (ignore problematic keys like time_text_embed)
                     single_transformer_lora = {}
-                    single_block_key = "transformer.single_transformer_blocks."
+                    single_block_key = "single_transformer_blocks."  # EXACT PATTERN FROM ORIGINAL
                     double_transformer_lora = {}
-                    double_block_key = "transformer.transformer_blocks."
+                    double_block_key = "transformer_blocks."  # NO "transformer." PREFIX!
                     
+                    ignored_keys = []
                     for key, value in lora_state_dict.items():
                         if single_block_key in key:
                             single_transformer_lora[key] = value
                         elif double_block_key in key:
                             double_transformer_lora[key] = value
-                        # Everything else (like time_text_embed) is IGNORED
+                        else:
+                            # Everything else (like time_text_embed) is IGNORED
+                            ignored_keys.append(key)
+                    
+                    if ignored_keys:
+                        print(f"  ⚠️ Ignoring {len(ignored_keys)} non-transformer keys (e.g. {ignored_keys[0]})")
                     
                     # Load single blocks
                     if single_transformer_lora:
