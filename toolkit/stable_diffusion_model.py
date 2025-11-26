@@ -322,13 +322,18 @@ class StableDiffusion:
         print("✅ Pipeline injected successfully. load_model() will be skipped.")
     
     def load_lora_after_injection(self):
-        """Load LoRA weights into the injected pipeline"""
+        """
+        Load LoRA weights into the injected pipeline.
+        Uses the EXACT logic from ai-toolkit's low_vram mode (proven to work).
+        """
         if not self.is_loaded:
             raise RuntimeError("Pipeline must be injected before loading LoRA")
         
         # Handle multiple LoRAs (backward compatible with single lora_path)
         if self.model_config.lora_paths is not None:
             print(f"🎨 Loading {len(self.model_config.lora_paths)} LoRA(s) into injected pipeline...")
+            
+            from safetensors.torch import load_file
             
             for idx, lora_config in enumerate(self.model_config.lora_paths):
                 lora_path = lora_config['path']
@@ -338,50 +343,53 @@ class StableDiffusion:
                 print(f"  📦 LoRA {idx+1}/{len(self.model_config.lora_paths)}: {lora_path} (weight: {lora_weight})")
                 
                 try:
-                    # Method: Load safetensors, clean keys, and inject directly
-                    from safetensors.torch import load_file
-                    
-                    # 1. Load state dict to memory (fast)
+                    # EXACT COPY of ai-toolkit's low_vram LoRA loading logic (lines 831-866)
                     lora_state_dict = load_file(lora_path)
-                    cleaned_state_dict = {}
                     
-                    # 2. Clean and Filter keys
+                    # Filter ONLY transformer blocks (ignore problematic keys like time_text_embed)
+                    single_transformer_lora = {}
+                    single_block_key = "transformer.single_transformer_blocks."
+                    double_transformer_lora = {}
+                    double_block_key = "transformer.transformer_blocks."
+                    
                     for key, value in lora_state_dict.items():
-                        # Handle ._data suffix
-                        if key.endswith('._data'):
-                            key = key[:-6]
-                            
-                        # For Flux, filter strictly to transformer blocks to avoid errors with auxiliary keys
-                        # (Matches behavior of ai-toolkit's low_vram loading which proved stable)
-                        if self.is_flux:
-                            if "transformer." not in key:
-                                # Skip non-transformer keys (like time_text_embed) that cause errors
-                                continue
-                                
-                        cleaned_state_dict[key] = value
+                        if single_block_key in key:
+                            single_transformer_lora[key] = value
+                        elif double_block_key in key:
+                            double_transformer_lora[key] = value
+                        # Everything else (like time_text_embed) is IGNORED
                     
-                    # 3. Inject directly into pipeline (no temp file needed!)
-                    self.pipeline.load_lora_weights(cleaned_state_dict, adapter_name=adapter_name)
-                    self.pipeline.set_adapters([adapter_name], adapter_weights=[lora_weight])
+                    # Load single blocks
+                    if single_transformer_lora:
+                        self.pipeline.load_lora_weights(single_transformer_lora, adapter_name=f"{adapter_name}_single")
+                        self.pipeline.set_adapters([f"{adapter_name}_single"], adapter_weights=[lora_weight])
+                        self.pipeline.fuse_lora()
+                        self.pipeline.unload_lora_weights()
+                        print(f"  ✅ Loaded single blocks ({len(single_transformer_lora)} keys)")
                     
-                    # Cleanup memory
+                    # Load double blocks
+                    if double_transformer_lora:
+                        self.pipeline.load_lora_weights(double_transformer_lora, adapter_name=f"{adapter_name}_double")
+                        self.pipeline.set_adapters([f"{adapter_name}_double"], adapter_weights=[lora_weight])
+                        self.pipeline.fuse_lora()
+                        self.pipeline.unload_lora_weights()
+                        print(f"  ✅ Loaded double blocks ({len(double_transformer_lora)} keys)")
+                    
+                    # Cleanup
                     del lora_state_dict
-                    del cleaned_state_dict
+                    del single_transformer_lora
+                    del double_transformer_lora
                     
                     print(f"  ✅ LoRA {adapter_name} loaded successfully")
                     
                 except Exception as e:
                     print(f"  ⚠️ Failed to load LoRA {adapter_name}: {e}")
+                    import traceback
+                    print(traceback.format_exc())
                     print(f"  ⚠️ Continuing without this LoRA...")
                     continue
             
-            # Fuse LoRAs into the model weights
-            try:
-                self.pipeline.fuse_lora()
-                self.pipeline.unload_lora_weights()
-                print(f"✅ Successfully fused {len(self.model_config.lora_paths)} LoRA(s)")
-            except Exception as e:
-                print(f"⚠️ LoRA fusion failed: {e}, but model may still work with adapters")
+            print(f"✅ Successfully loaded {len(self.model_config.lora_paths)} LoRA(s)")
         else:
             print("⚠️ No LoRA configured to load")
 
