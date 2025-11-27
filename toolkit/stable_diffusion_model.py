@@ -320,6 +320,54 @@ class StableDiffusion:
         
         self.is_loaded = True
         print("✅ Pipeline injected successfully. load_model() will be skipped.")
+        
+        # Load LoRA weights if configured (since load_model() is skipped)
+        self._load_lora_after_injection()
+    
+    def _load_lora_after_injection(self):
+        """Load LoRA weights into the injected pipeline.
+        This is called after inject_pipeline() since load_model() is skipped.
+        Uses the same logic as load_model() for FLUX LoRA loading.
+        """
+        if self.model_config.lora_paths is None:
+            return
+            
+        if not self.is_flux:
+            print("⚠️ LoRA loading after injection only supported for FLUX models")
+            return
+            
+        print(f"🎨 Loading {len(self.model_config.lora_paths)} LoRA(s) into injected pipeline...")
+        
+        dtype = get_torch_dtype(self.dtype)
+        transformer = self.pipeline.transformer
+        
+        # Create temporary pipeline for PEFT (same as in load_model)
+        from diffusers import FluxPipeline
+        pipe = FluxPipeline(
+            scheduler=None,
+            text_encoder=None,
+            tokenizer=None,
+            text_encoder_2=None,
+            tokenizer_2=None,
+            vae=None,
+            transformer=transformer,
+        )
+        
+        for idx, lora_config in enumerate(self.model_config.lora_paths):
+            lora_path = lora_config['path']
+            lora_weight = lora_config.get('weight', 1.0)
+            adapter_name = f"lora{idx+1}"
+            
+            print(f"  📦 Loading LoRA {idx+1}/{len(self.model_config.lora_paths)}: {lora_path} (weight: {lora_weight})")
+            
+            # Standard loading (not low_vram since we have full VRAM)
+            pipe.load_lora_weights(lora_path, adapter_name=adapter_name)
+            pipe.set_adapters([adapter_name], adapter_weights=[lora_weight])
+            pipe.fuse_lora()
+            pipe.unload_lora_weights()
+        
+        print(f"✅ Successfully fused {len(self.model_config.lora_paths)} LoRA(s) into injected pipeline")
+        flush()
     
 
     def load_model(self):
